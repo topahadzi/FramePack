@@ -345,6 +345,14 @@ def process(input_image, prompt, n_prompt, seed, total_second_length, latent_win
 
 def end_process():
     stream.input_queue.push('end')
+    
+    # Manually cleanup memory after ending generation
+    if not high_vram:
+        unload_complete_models(
+            text_encoder, text_encoder_2, image_encoder, vae, transformer
+        )
+    torch.cuda.empty_cache()
+    print("Memory cleared after ending generation.")
 
 
 quick_prompts = [
