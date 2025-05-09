@@ -1,6 +1,7 @@
 from diffusers_helper.hf_login import login
 
 import os
+import gc
 
 os.environ['HF_HOME'] = os.path.abspath(os.path.realpath(os.path.join(os.path.dirname(__file__), './hf_download')))
 
@@ -112,7 +113,9 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
         unload_complete_models(
             text_encoder, text_encoder_2, image_encoder, vae, transformer
         )
-
+        torch.cuda.empty_cache()
+        gc.collect()
+        
         # Text encoding
 
         stream.output_queue.push(('progress', (None, '', make_progress_bar_html(0, 'Text encoding ...'))))
@@ -206,8 +209,12 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
             clean_latents_post, clean_latents_2x, clean_latents_4x = history_latents[:, :, :1 + 2 + 16, :, :].split([1, 2, 16], dim=2)
             clean_latents = torch.cat([clean_latents_pre, clean_latents_post], dim=2)
 
-            unload_complete_models()
+            unload_complete_models(
+                text_encoder, text_encoder_2, image_encoder, vae, transformer
+            )
             move_model_to_device_with_memory_preservation(transformer, target_device=gpu, preserved_memory_gb=gpu_memory_preservation)
+            torch.cuda.empty_cache()
+            gc.collect()
 
             if use_teacache:
                 transformer.initialize_teacache(enable_teacache=True, num_steps=steps)
@@ -271,6 +278,8 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
 
             offload_model_from_device_for_memory_preservation(transformer, target_device=gpu, preserved_memory_gb=8)
             load_model_as_complete(vae, target_device=gpu)
+            torch.cuda.empty_cache()
+            gc.collect()        
 
             real_history_latents = history_latents[:, :, :total_generated_latent_frames, :, :]
 
@@ -283,7 +292,11 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
                 current_pixels = vae_decode(real_history_latents[:, :, :section_latent_frames], vae).cpu()
                 history_pixels = soft_append_bcthw(current_pixels, history_pixels, overlapped_frames)
 
-            unload_complete_models()
+            unload_complete_models(
+                text_encoder, text_encoder_2, image_encoder, vae, transformer
+            )
+            torch.cuda.empty_cache()
+            gc.collect()
 
             output_filename = os.path.join(outputs_folder, f'{job_id}_{total_generated_latent_frames}.mp4')
 
@@ -301,6 +314,8 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
         unload_complete_models(
             text_encoder, text_encoder_2, image_encoder, vae, transformer
         )
+        torch.cuda.empty_cache()
+        gc.collect()
 
     stream.output_queue.push(('end', None))
     return
@@ -341,6 +356,7 @@ def end_process():
         text_encoder, text_encoder_2, image_encoder, vae, transformer
     )
     torch.cuda.empty_cache()
+    gc.collect()
     print("Memory cleared after ending generation.")
 
 
